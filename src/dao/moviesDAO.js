@@ -28,10 +28,10 @@ export default class MoviesDAO {
   static async getConfiguration() {
     const roleInfo = await mflix.command({ connectionStatus: 1 })
     const authInfo = roleInfo.authInfo.authenticatedUserRoles[0]
-    const { poolSize, wtimeout } = movies.s.db.serverConfig.s.options
+    const { poolSize, writeConcern } = movies.s.db.serverConfig.s.options
     let response = {
       poolSize,
-      wtimeout,
+      wtimeout: writeConcern.wtimeout,
       authInfo,
     }
     return response
@@ -61,7 +61,10 @@ export default class MoviesDAO {
       // and _id. Do not put a limit in your own implementation, the limit
       // here is only included to avoid sending 46000 documents down the
       // wire.
-      cursor = await movies.find({countries: { $in: countries }},{ projection: { title: 1 } })
+      cursor = await movies.find(
+        { countries: { $in: countries } },
+        { projection: { title: 1 } },
+      )
     } catch (e) {
       console.error(`Unable to issue find command, ${e}`)
       return []
@@ -203,7 +206,6 @@ export default class MoviesDAO {
       // Add the stages to queryPipeline in the correct order.
     ]
 
-
     try {
       const results = await (await movies.aggregate(queryPipeline)).next()
       const count = await (await movies.aggregate(countingPipeline)).next()
@@ -246,15 +248,13 @@ export default class MoviesDAO {
       }
     }
 
-
-    let { query = {}, project = {}, sort = DEFAULT_SORT} = queryParams
+    let { query = {}, project = {}, sort = DEFAULT_SORT } = queryParams
     let cursor
     try {
       cursor = await movies
         .find(query)
         .project(project)
         .sort(sort)
-
     } catch (e) {
       console.error(`Unable to issue find command, ${e}`)
       return { moviesList: [], totalNumMovies: 0 }
@@ -272,7 +272,7 @@ export default class MoviesDAO {
     // TODO Ticket: Paging
     // Use the cursor to only return the movies that belong on the current page
     //  console.log("the Cursor is ....",cursor);
-    const displayCursor = cursor.skip(moviesPerPage*page).limit(moviesPerPage)
+    const displayCursor = cursor.skip(moviesPerPage * page).limit(moviesPerPage)
 
     // console.log("the displayCursor is ....",displayCursor);
 
@@ -310,33 +310,33 @@ export default class MoviesDAO {
       // Implement the required pipeline.
       const pipeline = [
         {
-          '$match': {
-            '_id':  ObjectId(id)
-          }
-        }, {
-          '$lookup': {
-            'from': 'comments', 
-            'let': {
-              'id': '$_id'
-            }, 
-            'pipeline': [
+          $match: {
+            _id: ObjectId(id),
+          },
+        },
+        {
+          $lookup: {
+            from: "comments",
+            let: {
+              id: "$_id",
+            },
+            pipeline: [
               {
-                '$match': {
-                  '$expr': {
-                    '$eq': [
-                      '$movie_id', '$$id'
-                    ]
-                  }
-                }
-              }, {
-                '$sort': {
-                  'date': -1
-                }
-              }
-            ], 
-            'as': 'comments'
-          }
-        }
+                $match: {
+                  $expr: {
+                    $eq: ["$movie_id", "$$id"],
+                  },
+                },
+              },
+              {
+                $sort: {
+                  date: -1,
+                },
+              },
+            ],
+            as: "comments",
+          },
+        },
       ]
       return await movies.aggregate(pipeline).next()
     } catch (e) {
@@ -349,8 +349,24 @@ export default class MoviesDAO {
 
       // TODO Ticket: Error Handling
       // Catch the InvalidId error by string matching, and then handle it.
-      console.error(`Something went wrong in getMovieByID: ${e}`)
-      throw e
+      // console.error(e.name + ': ' + e.message)
+
+      // console.log("the err message -----",e.toString())
+      if (
+        e.toString() ===
+        "Argument passed in must be a single String of 12 bytes or a string of 24 hex characters"
+      ) {
+        // console.error(`Something went wrong in getMovieByID: ${e.toString()}`)
+        return { error: e.toString() }
+      } else {
+        // e.toString();
+        // console.log("the data to return .....",e.toString());
+        return null
+      }
+      // console.error(`Something went wrong in getMovieByID: ${e.toString()}`)
+      // return { error: e }
+      // return { error: null }
+      // throw e
     }
   }
 }
